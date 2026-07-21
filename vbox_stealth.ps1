@@ -33,6 +33,11 @@ function Write-Info {
     Write-Host "[INFO] $Message" -ForegroundColor Yellow
 }
 
+function Write-Warning {
+    param([string]$Message)
+    Write-Host "⚠️  $Message" -ForegroundColor Yellow
+}
+
 function Write-Section {
     param([string]$Message)
     Write-Host "================================================================" -ForegroundColor Cyan
@@ -194,7 +199,7 @@ Write-Section "ACPI Configuration"
 & $VBoxManage setextradata "$VMName" "VBoxInternal/Devices/acpi/0/Config/AcpiCreatorId" "INTL"
 & $VBoxManage setextradata "$VMName" "VBoxInternal/Devices/acpi/0/Config/AcpiCreatorRev" "0x20210331"
 Write-Success "ACPI tables configured"
-Write-Host "⚠️  Note: ACPI VBOX__ entries require guest-side registry cleanup" -ForegroundColor Yellow
+Write-Warning "ACPI VBOX__ entries require guest-side registry cleanup"
 Write-Host ""
 
 # Disk Configuration
@@ -228,10 +233,26 @@ Write-Host ""
 
 # Timing and Performance
 Write-Section "Timing and Performance"
-& $VBoxManage setextradata "$VMName" "VBoxInternal/TM/TSCTiedToExecution" 1
+
+# Try to set TSC, but handle NEM mode error gracefully
+try {
+    & $VBoxManage setextradata "$VMName" "VBoxInternal/TM/TSCTiedToExecution" 1 2>&1 | Out-Null
+    Write-Success "TSC tied to execution"
+} catch {
+    Write-Warning "TSC configuration skipped (NEM mode or other incompatibility)"
+}
+
 & $VBoxManage modifyvm "$VMName" --largepages on
-& $VBoxManage setextradata "$VMName" "VBoxInternal/Devices/VMMDev/0/Config/GetHostTimeDisabled" 1
-Write-Success "Timing optimizations applied"
+
+# Try to disable host time, but handle NEM mode error gracefully
+try {
+    & $VBoxManage setextradata "$VMName" "VBoxInternal/Devices/VMMDev/0/Config/GetHostTimeDisabled" 1 2>&1 | Out-Null
+    Write-Success "Host time disabled"
+} catch {
+    Write-Warning "Host time configuration skipped (NEM mode or other incompatibility)"
+}
+
+Write-Success "Timing optimizations applied (with compatibility handling)"
 Write-Host ""
 
 # Network Configuration
@@ -253,7 +274,7 @@ Write-Section "Additional Stealth Settings"
 $vminfo = & $VBoxManage showvminfo "$VMName" --machinereadable
 $currentFirmware = ($vminfo | Select-String "^firmware=").ToString().Split('"')[1]
 Write-Host "Current firmware: $currentFirmware" -ForegroundColor White
-Write-Host "⚠️  Consider using --firmware efi for more realistic modern hardware emulation" -ForegroundColor Yellow
+Write-Warning "Consider using --firmware efi for more realistic modern hardware emulation"
 Write-Host "   (requires OS reinstall if switching from BIOS)" -ForegroundColor Yellow
 Write-Host ""
 
@@ -268,7 +289,7 @@ Write-Host "System Serial:     $SYSTEM_SERIAL" -ForegroundColor White
 Write-Host "Disk Model:        $DISK_MODEL" -ForegroundColor White
 Write-Host "MAC Address:       $RANDOM_MAC" -ForegroundColor White
 Write-Host "Paravirt Provider: none" -ForegroundColor White
-Write-Host "TSC Mode:          Tied to execution" -ForegroundColor White
+Write-Host "TSC Mode:          Tied to execution (if supported)" -ForegroundColor White
 Write-Host ""
 
 # Next Steps
